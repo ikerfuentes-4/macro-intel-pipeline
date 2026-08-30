@@ -1,0 +1,45 @@
+# Proveedor de LLM (instala el que vayas a usar segun LLM_PROVIDER; ambos son ligeros y
+# puedes dejar los dos instalados sin problema):
+google-genai>=0.3.0
+groq>=0.11.0
+
+feedparser>=6.0.11
+requests>=2.32.0
+pydantic>=2.7.0
+SQLAlchemy>=2.0.30
+python-dotenv>=1.0.1
+rapidfuzz>=3.9.0
+python-dateutil>=2.9.0
+yfinance>=0.2.40
+pytest>=8.2.0
+
+# Clustering semantico de articulos por embeddings (crosscheck/clustering.py) -- modelo local
+# (all-MiniLM-L6-v2, ~80MB, se descarga la primera vez), sin API ni coste. Reemplaza al
+# clustering por texto literal (rapidfuzz, que se mantiene arriba solo porque geo/geocode.py
+# lo sigue usando para otra cosa).
+sentence-transformers>=3.0.0
+
+# Dashboard geoespacial (backend ligero; el frontend es HTML+Tailwind+Leaflet via CDN, sin build)
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Registro de conflictos activos (parseo de tablas HTML de Wikipedia, ver ingestion/conflict_registry.py)
+beautifulsoup4>=4.12.0
+lxml>=5.2.0
+
+# Informe Excel multi-pestana del predictor de producto (ver analysis/product_report.py)
+openpyxl>=3.1.0
+
+# Migraciones de esquema (Fase 1: SQLite; Fase 2: Postgres -- mismo Alembic para ambos)
+alembic>=1.13.0
+
+# Driver PostgreSQL (Fase 2). No hace falta para SQLite -- instalalo solo si vas a usar
+# DATABASE_URL=postgresql+psycopg://... (ver docker-compose.yml)
+psycopg[binary]>=3.1.0
+
+# Identidad, RBAC y rate limiting (Institutional Prompt, seccion 6). bcrypt directo, NO
+# passlib -- passlib esta sin mantenimiento y rompe con bcrypt>=4.1 (sin atributo __about__,
+# verificado en esta maquina antes de elegirlo).
+bcrypt>=4.1.0
+pyjwt>=2.9.0
+slowapi>=0.1.9

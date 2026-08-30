@@ -1,0 +1,65 @@
+# Fase 2: PostgreSQL + contenedores (Master Build Prompt, seccion 4 y 15).
+#
+# Uso:
+#   docker compose up -d --build
+#   docker compose logs -f api
+#
+# La API queda en http://localhost:8000. El servicio "scheduler" ejecuta el pipeline en bucle
+# (ver scheduler/docker_loop.sh) -- alternativa dentro de Docker a las tareas de Windows Task
+# Scheduler documentadas en el README para la instalacion SQLite/Fase 1.
+#
+# NOTA: no se ha podido ejecutar `docker compose up` en el entorno donde se escribio esto
+# (Docker no esta instalado en esa maquina) -- revisado por correccion, no verificado en
+# ejecucion. Si algo falla al levantarlo, lo mas probable es un detalle de la version de
+# Docker Compose instalada; el resto del proyecto (API, modelos, migraciones) SI esta
+# verificado en vivo contra SQLite.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: macro_intel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-macro_intel_dev}
+      POSTGRES_DB: macro_intel
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U macro_intel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://macro_intel:${POSTGRES_PASSWORD:-macro_intel_dev}@db:5432/macro_intel
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/product_reports:/app/data/product_reports
+    command: sh -c "alembic upgrade head && uvicorn api.server:app --host 0.0.0.0 --port 8000"
+
+  scheduler:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://macro_intel:${POSTGRES_PASSWORD:-macro_intel_dev}@db:5432/macro_intel
+      PIPELINE_INTERVAL_SECONDS: "14400"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh /app/scheduler/docker_loop.sh
+
+volumes:
+  postgres_data:

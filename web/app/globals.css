@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+/* Tema oscuro fijo (consistente con el frontend estatico de Fase 1) -- el color real de fondo
+   y texto se aplica via clases de Tailwind directamente en app/layout.tsx (bg-slate-950
+   text-slate-200), esto solo fija las variables de fuente. */
+:root {
+  --font-sans-fallback: Arial, Helvetica, sans-serif;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}

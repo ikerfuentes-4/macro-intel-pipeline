@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Macro Intelligence Pipeline — Dashboard</title>
+
+<!-- Tailwind CSS (CDN, sin build step) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Leaflet.js + OpenStreetMap: mapa 100% gratuito, sin API key ni tarjeta de credito -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+  html, body, #map { height: 100%; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #0f172a; color: #e2e8f0; }
+  .leaflet-container { background: #0b1120; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  .tab-btn { padding: 8px 14px; font-size: 13px; color: #94a3b8; border-bottom: 2px solid transparent; cursor: pointer; }
+  .tab-btn.active { color: #e2e8f0; border-bottom-color: #6366f1; }
+  .tab-btn:hover { color: #cbd5e1; }
+</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-200 font-sans overflow-hidden">
+
+<div class="flex flex-col h-full">
+
+  <!-- Header -->
+  <header class="flex items-center justify-between gap-4 px-5 py-3 border-b border-slate-800 bg-slate-900/70 backdrop-blur">
+    <div>
+      <h1 class="text-lg font-semibold tracking-tight text-slate-100">Macro Intelligence Pipeline</h1>
+      <p class="text-xs text-slate-500">Eventos geopoliticos contrastados · analisis macro · track record verificable</p>
+    </div>
+    <div id="summary-bar" class="hidden md:flex items-center gap-4 text-xs">
+      <!-- rellenado por JS -->
+    </div>
+    <div class="flex items-center gap-2 text-xs text-slate-500">
+      <span id="refresh-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+      <span id="last-updated">actualizando…</span>
+    </div>
+  </header>
+
+  <!-- Pestanas -->
+  <nav class="flex gap-1 px-5 border-b border-slate-800 bg-slate-900/40">
+    <button id="tab-map" class="tab-btn active" onclick="switchTab('map')">🗺️ Mapa</button>
+    <button id="tab-predictor" class="tab-btn" onclick="switchTab('predictor')">🔎 Predictor de producto</button>
+  </nav>
+
+  <!-- Cuerpo -->
+  <div class="relative flex-1 min-h-0">
+
+    <!-- ===== VISTA: MAPA ===== -->
+    <section id="view-map" class="absolute inset-0">
+      <div id="map" class="absolute inset-0"></div>
+
+      <!-- Leyenda -->
+      <div class="absolute bottom-4 left-4 z-[500] bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-2 text-[11px] space-y-1 shadow-lg">
+        <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span> Analizado por IA · pendiente</div>
+        <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Analizado por IA · cumplida</div>
+        <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span> Analizado por IA · fallida</div>
+        <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full border border-slate-500 inline-block"></span> Conflicto activo (registro, sin analizar)</div>
+      </div>
+
+      <!-- Estado vacio -->
+      <div id="empty-state" class="hidden absolute inset-0 z-[500] flex items-center justify-center pointer-events-none">
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl px-6 py-5 text-center max-w-sm shadow-xl">
+          <p class="text-sm font-medium text-slate-200">Todavia no hay eventos analizados por IA.</p>
+          <p class="text-xs text-slate-500 mt-1">Los puntos grises son el registro de conflictos activos. Ejecuta <code class="text-emerald-400">python main.py run</code> para generar el primer analisis.</p>
+        </div>
+      </div>
+
+      <!-- Panel de detalle (tarjeta al hacer click en un marcador) -->
+      <aside id="detail-panel"
+        class="absolute top-0 right-0 z-[1000] h-full w-full sm:w-[420px] bg-slate-900/95 backdrop-blur border-l border-slate-800
+               shadow-2xl overflow-y-auto transition-transform duration-300 ease-out translate-x-full">
+        <div class="sticky top-0 flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/95">
+          <span class="text-xs uppercase tracking-wide text-slate-500">Detalle</span>
+          <button id="close-panel" class="text-slate-400 hover:text-slate-100 text-xl leading-none px-2">&times;</button>
+        </div>
+        <div id="detail-content" class="p-4 space-y-4 text-sm"></div>
+      </aside>
+    </section>
+
+    <!-- ===== VISTA: PREDICTOR DE PRODUCTO ===== -->
+    <section id="view-predictor" class="absolute inset-0 hidden overflow-y-auto">
+      <div class="max-w-2xl mx-auto p-6 space-y-5">
+
+        <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-300">
+          Herramienta exploratoria bajo demanda: cruza en tiempo real 4 bloques de datos reales
+          (conflictos, bancos centrales, energia/suministro, sentimiento). Su hipotesis falsable se
+          guarda en <strong>un track record separado</strong> del pipeline automatico
+          (<span id="product-summary-inline" class="text-slate-400">cargando…</span>) — nunca se mezclan,
+          porque una consulta bajo demanda del usuario y un analisis automatico sobre una noticia ya
+          contrastada no son estadisticamente comparables.
+        </div>
+
+        <div>
+          <label class="block text-xs uppercase tracking-wide text-slate-500 mb-1">Producto financiero</label>
+          <div class="flex gap-2">
+            <input id="product-input" type="text"
+              placeholder="ej. Oro (GC=F), EUR/USD, Petroleo WTI, Bonos EEUU 10 anos, Nikkei 225…"
+              class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200
+                     placeholder:text-slate-600 focus:outline-none focus:border-indigo-500" />
+            <button id="product-submit"
+              class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium text-white transition-colors">
+              Analizar
+            </button>
+          </div>
+        </div>
+
+        <div id="product-loading" class="hidden text-sm text-slate-500">Generando prediccion…</div>
+        <div id="product-error" class="hidden text-sm text-rose-400"></div>
+        <div id="product-result" class="hidden"></div>
+
+        <details class="text-xs text-slate-500">
+          <summary class="cursor-pointer hover:text-slate-300">Ver los conflictos activos usados como contexto (<span id="conflicts-count">0</span>)</summary>
+          <div id="conflicts-context-list" class="mt-2 space-y-1 max-h-64 overflow-y-auto"></div>
+        </details>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+const REFRESH_MS = 60000; // sondeo cada 60s ("tiempo real" via polling, no websockets)
+
+const STATUS_STYLE = {
+  PENDIENTE: { color: '#f59e0b', label: 'Pendiente' },
+  CUMPLIDA:  { color: '#10b981', label: 'Cumplida'  },
+  FALLIDA:   { color: '#f43f5e', label: 'Fallida'   },
+  ERROR:     { color: '#64748b', label: 'Error'     },
+  null:      { color: '#64748b', label: 'Sin evaluar' },
+};
+
+const DIRECTION_ARROW = { SUBIDA: '▲', BAJADA: '▼', MANTENER: '►', ALCISTA: '▲', BAJISTA: '▼', LATERAL: '►' };
+const VERDICT_STYLE = {
+  GANADOR:  'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  PERDEDOR: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+  NEUTRAL:  'bg-slate-500/15 text-slate-400 border-slate-500/30',
+};
+const MARKET_DIR_COLOR = { ALCISTA: 'text-emerald-400', BAJISTA: 'text-rose-400', LATERAL: 'text-amber-400' };
+
+let lastConflicts = [];
+
+// --- Mapa base (CartoDB Dark Matter: tiles gratuitos, sin API key) ---
+const map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([20, 10], 2);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  maxZoom: 19,
+}).addTo(map);
+
+let eventsLayer = L.layerGroup().addTo(map);
+let conflictsLayer = L.layerGroup().addTo(map);
+
+// Leaflet puede inicializarse con el contenedor aun sin layout estable (p.ej. pestana en
+// segundo plano, animaciones de flexbox) y cachear un tamano incorrecto: se fuerza un
+// recalculo al cargar y ante cualquier resize real de la ventana.
+window.addEventListener('load', () => setTimeout(() => map.invalidateSize(), 100));
+window.addEventListener('resize', () => map.invalidateSize());
+
+const detailPanel = document.getElementById('detail-panel');
+const detailContent = document.getElementById('detail-content');
+document.getElementById('close-panel').addEventListener('click', () => {
+  detailPanel.classList.add('translate-x-full');
+});
+
+function pct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
+
+function chip(text, extraClasses = 'bg-slate-800 text-slate-300 border-slate-700') {
+  return `<span class="inline-block px-2 py-0.5 rounded-full text-[11px] border ${extraClasses} mr-1 mb-1">${text}</span>`;
+}
+
+// --- Navegacion por pestanas ---
+function switchTab(tab) {
+  document.getElementById('view-map').classList.toggle('hidden', tab !== 'map');
+  document.getElementById('view-predictor').classList.toggle('hidden', tab !== 'predictor');
+  document.getElementById('tab-map').classList.toggle('active', tab === 'map');
+  document.getElementById('tab-predictor').classList.toggle('active', tab === 'predictor');
+  if (tab === 'map') {
+    // el mapa necesita recalcular su tamano al volver a ser visible
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+}
+
+// --- Panel de detalle: evento analizado por IA ---
+function renderDetail(ev) {
+  const status = STATUS_STYLE[ev.prediccion_status] || STATUS_STYLE.null;
+  const rp = ev.prediccion_tipos_interes || {};
+  const hyp = ev.hipotesis_falsable || {};
+  const activos = ev.reacciones_activos || [];
+
+  detailContent.innerHTML = `
+    <div class="flex items-center gap-2 mb-1">
+      <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">ANALIZADO POR IA</span>
+    </div>
+    <div>
+      <h2 class="text-base font-semibold text-slate-100 leading-snug">${ev.titular ?? '(sin resumen)'}</h2>
+      <p class="text-[11px] text-slate-500 mt-1">Evento ${ev.evento_id} · ${new Date(ev.created_at).toLocaleString('es-ES')}</p>
+    </div>
+
+    <div>
+      <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Fuentes contrastadas (diversidad institucional: ${ev.diversidad_institucional})</p>
+      <div>${(ev.fuentes_contrastadas || []).map(f => chip(f)).join('')}</div>
+    </div>
+
+    <div>
+      <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Causa raiz geopolitica</p>
+      <p class="text-slate-300">${ev.causa_raiz_geopolitica ?? '—'}</p>
+    </div>
+
+    <div>
+      <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Vectores de impacto</p>
+      <div>${(ev.vectores_impacto || []).map(v => chip(v.replaceAll('_',' '), 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30')).join('')}</div>
+    </div>
+
+    <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+      <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Prediccion de tipos de interes</p>
+      <p class="text-slate-200 font-medium">${rp.instrumento ?? '—'}
+        <span class="ml-1 ${rp.direccion === 'SUBIDA' ? 'text-rose-400' : rp.direccion === 'BAJADA' ? 'text-emerald-400' : 'text-amber-400'}">
+          ${DIRECTION_ARROW[rp.direccion] ?? ''} ${rp.direccion ?? ''}
+        </span>
+        <span class="text-slate-500 text-xs">(${pct(rp.probabilidad)}, ${rp.horizonte_meses ?? '?'}m)</span>
+      </p>
+      <p class="text-xs text-slate-400 mt-1">${rp.justificacion ?? ''}</p>
+    </div>
+
+    <div>
+      <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Reaccion de activos</p>
+      <div class="space-y-1">
+        ${activos.map(a => `
+          <div class="flex items-center justify-between border border-slate-800 rounded-md px-2 py-1">
+            <span class="text-slate-300">${a.clase_activo}</span>
+            <span class="text-[11px] px-2 py-0.5 rounded-full border ${VERDICT_STYLE[a.veredicto] || VERDICT_STYLE.NEUTRAL}">
+              ${a.veredicto} · ${a.magnitud_esperada}
+            </span>
+          </div>`).join('') || '<p class="text-xs text-slate-500">Sin datos.</p>'}
+      </div>
+    </div>
+
+    <div class="rounded-lg border p-3" style="border-color:${status.color}55; background:${status.color}0d;">
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-[11px] uppercase tracking-wide text-slate-500">Hipotesis falsable</p>
+        <span class="text-[11px] px-2 py-0.5 rounded-full font-medium" style="color:${status.color}; border:1px solid ${status.color}66;">
+          ${status.label}
+        </span>
+      </div>
+      <p class="text-slate-300">${hyp.enunciado ?? '—'}</p>
+      <p class="text-xs text-slate-500 mt-1">
+        Ticker <span class="text-slate-300">${hyp.ticker_validacion ?? '—'}</span>
+        ${hyp.comparador ?? ''} <span class="text-slate-300">${hyp.valor_umbral ?? '—'}</span>
+        · revision: ${hyp.fecha_limite_revision ?? '—'}
+        ${ev.prediccion_valor_real != null ? `· valor real: <span class="text-slate-300">${ev.prediccion_valor_real}</span>` : ''}
+      </p>
+    </div>
+
+    <div>
+      <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Confianza del analisis: ${pct(ev.nivel_confianza_analisis)}</p>
+      <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        <div class="h-full bg-indigo-500" style="width:${(ev.nivel_confianza_analisis || 0) * 100}%"></div>
+      </div>
+    </div>
+
+    <div>
+      <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Limitaciones y sesgos declarados</p>
+      <p class="text-xs text-slate-500 italic">${ev.limitaciones_y_sesgos_potenciales ?? '—'}</p>
+    </div>
+  `;
+  detailPanel.classList.remove('translate-x-full');
+}
+
+// --- Panel de detalle: conflicto activo (registro factual, sin analisis IA) ---
+function renderConflictDetail(c) {
+  detailContent.innerHTML = `
+    <div class="flex items-center gap-2 mb-1">
+      <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/40 text-slate-300 border border-slate-600">
+        CONFLICTO ACTIVO · SIN ANALIZAR POR IA
+      </span>
+    </div>
+    <h2 class="text-base font-semibold text-slate-100 leading-snug">${c.nombre}</h2>
+    <p class="text-[11px] text-slate-500 mt-1">Activo desde ${c.inicio_aproximado} · ${c.continente}</p>
+
+    <div class="mt-3">
+      <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Paises afectados</p>
+      <div>${(c.paises || []).map(p => chip(p)).join('')}</div>
+    </div>
+
+    <p class="text-xs text-slate-500 mt-4">
+      Registro factual sincronizado desde
+      <a href="${c.fuente_url}" target="_blank" rel="noopener" class="text-indigo-400 hover:underline">Wikipedia · List of ongoing armed conflicts</a>.
+      Este marcador NO tiene analisis macroeconomico asociado — para eso, usa la pestana
+      <button class="text-indigo-400 hover:underline" onclick="switchTab('predictor')">Predictor de producto</button>.
+    </p>
+  `;
+  detailPanel.classList.remove('translate-x-full');
+}
+
+function renderSummary(summary) {
+  const bar = document.getElementById('summary-bar');
+  if (!summary || summary.total_evaluadas === 0) {
+    bar.innerHTML = `<span class="text-slate-500">Aun sin predicciones evaluadas</span>`;
+    return;
+  }
+  bar.innerHTML = `
+    <span class="text-slate-400">Track record:</span>
+    <span class="text-emerald-400">${summary.aciertos} cumplidas</span>
+    <span class="text-rose-400">${summary.fallos} fallidas</span>
+    <span class="text-amber-400">${summary.pendientes} pendientes</span>
+    <span class="text-slate-300 font-medium">${Math.round((summary.tasa_acierto ?? 0) * 100)}% acierto</span>
+  `;
+}
+
+function renderConflictsContextList() {
+  document.getElementById('conflicts-count').textContent = lastConflicts.length;
+  document.getElementById('conflicts-context-list').innerHTML = lastConflicts.map(c => `
+    <div class="flex items-center justify-between border-b border-slate-800/60 py-1">
+      <span class="text-slate-400">${c.nombre}</span>
+      <span class="text-slate-600">${c.pais_principal} · ${c.inicio_aproximado}</span>
+    </div>
+  `).join('') || '<p class="text-slate-600">Sin conflictos sincronizados. Ejecuta <code>python main.py sync-conflicts</code>.</p>';
+}
+
+async function refresh() {
+  document.getElementById('refresh-dot').classList.remove('bg-emerald-500');
+  document.getElementById('refresh-dot').classList.add('bg-amber-500');
+  try {
+    const [events, summary, conflicts] = await Promise.all([
+      fetch('/api/events').then(r => r.json()),
+      fetch('/api/summary').then(r => r.json()),
+      fetch('/api/conflicts').then(r => r.json()),
+    ]);
+    lastConflicts = conflicts;
+
+    eventsLayer.clearLayers();
+    conflictsLayer.clearLayers();
+    document.getElementById('empty-state').classList.toggle('hidden', events.length > 0);
+
+    // Capa base: TODOS los conflictos activos registrados (marcadores neutros, sin analisis IA)
+    conflicts.forEach(c => {
+      if (c.latitud == null || c.longitud == null) return;
+      const marker = L.circleMarker([c.latitud, c.longitud], {
+        radius: 5,
+        weight: 1.5,
+        color: '#64748b',
+        fillColor: '#334155',
+        fillOpacity: 0.5,
+      }).addTo(conflictsLayer);
+      marker.bindTooltip(`${c.nombre} (${c.pais_principal})`, { direction: 'top', opacity: 0.85 });
+      marker.on('click', () => renderConflictDetail(c));
+    });
+
+    // Capa destacada: eventos ya analizados por el pipeline de IA
+    events.forEach(ev => {
+      const loc = ev.ubicacion;
+      if (!loc || loc.latitud == null || loc.longitud == null) return;
+      const status = STATUS_STYLE[ev.prediccion_status] || STATUS_STYLE.null;
+
+      const marker = L.circleMarker([loc.latitud, loc.longitud], {
+        radius: 9,
+        weight: 2,
+        color: status.color,
+        fillColor: status.color,
+        fillOpacity: 0.6,
+      }).addTo(eventsLayer);
+
+      marker.bindTooltip(`${loc.pais_o_region ?? ''} — ${ev.titular ?? ''}`, { direction: 'top', opacity: 0.9 });
+      marker.on('click', () => renderDetail(ev));
+    });
+
+    renderSummary(summary);
+    renderConflictsContextList();
+    document.getElementById('last-updated').textContent =
+      'actualizado ' + new Date().toLocaleTimeString('es-ES');
+  } catch (err) {
+    document.getElementById('last-updated').textContent = 'error al conectar con la API';
+    console.error(err);
+  } finally {
+    document.getElementById('refresh-dot').classList.remove('bg-amber-500');
+    document.getElementById('refresh-dot').classList.add('bg-emerald-500');
+  }
+}
+
+// --- Predictor de producto ---
+async function submitProduct() {
+  const input = document.getElementById('product-input');
+  const producto = input.value.trim();
+  if (!producto) return;
+
+  const resultEl = document.getElementById('product-result');
+  const loadingEl = document.getElementById('product-loading');
+  const errorEl = document.getElementById('product-error');
+  resultEl.classList.add('hidden');
+  errorEl.classList.add('hidden');
+  loadingEl.classList.remove('hidden');
+
+  try {
+    const res = await fetch('/api/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ producto }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || ('HTTP ' + res.status));
+    }
+    renderProductResult(await res.json());
+  } catch (err) {
+    errorEl.textContent = 'Error: ' + err.message;
+    errorEl.classList.remove('hidden');
+  } finally {
+    loadingEl.classList.add('hidden');
+  }
+}
+
+function renderProductResult(f) {
+  const resultEl = document.getElementById('product-result');
+  const hyp = f.hipotesis_falsable || {};
+  resultEl.innerHTML = `
+    <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-4">
+      <div class="flex items-center justify-between gap-3">
+        <h3 class="text-lg font-semibold text-slate-100">${f.producto}</h3>
+        <span class="text-base font-medium ${MARKET_DIR_COLOR[f.direccion] ?? ''}">${DIRECTION_ARROW[f.direccion] ?? ''} ${f.direccion}</span>
+      </div>
+
+      ${f.report_url ? `
+      <a href="${f.report_url}" target="_blank"
+         class="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-300 border border-emerald-600/40 hover:bg-emerald-600/30 transition-colors">
+        📊 Descargar informe Excel (5 pestanas)
+      </a>` : ''}
+
+      <div class="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3">
+        <p class="text-[11px] uppercase tracking-wide text-indigo-300 mb-1">Tesis de inversion (cruce de los 4 bloques)</p>
+        <p class="text-sm text-slate-200">${f.tesis_inversion}</p>
+      </div>
+
+      <div>
+        <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Conflictos considerados</p>
+        <div>${(f.conflictos_considerados || []).map(c => chip(c, 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30')).join('') || '<span class="text-xs text-slate-500">Ninguno directamente relevante</span>'}</div>
+      </div>
+
+      <div class="text-sm text-slate-400"><span class="text-slate-200 font-medium">${pct(f.probabilidad)}</span> de probabilidad · horizonte ${f.horizonte_meses} meses</div>
+
+      <div class="grid gap-2">
+        <div class="border border-slate-800 rounded-md p-2">
+          <p class="text-[10px] uppercase tracking-wide text-slate-500">Bancos centrales</p>
+          <p class="text-xs text-slate-400">${f.resumen_bancos_centrales}</p>
+        </div>
+        <div class="border border-slate-800 rounded-md p-2">
+          <p class="text-[10px] uppercase tracking-wide text-slate-500">Energia / suministro</p>
+          <p class="text-xs text-slate-400">${f.resumen_energia_suministro}</p>
+        </div>
+        <div class="border border-slate-800 rounded-md p-2">
+          <p class="text-[10px] uppercase tracking-wide text-slate-500">Sentimiento de mercado</p>
+          <p class="text-xs text-slate-400">${f.resumen_sentimiento}</p>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Escenario alternativo</p>
+        <p class="text-xs text-slate-400">${f.escenario_alternativo}</p>
+      </div>
+
+      <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+        <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Hipotesis falsable (track record del predictor)</p>
+        <p class="text-slate-300 text-sm">${hyp.enunciado ?? '—'}</p>
+        <p class="text-xs text-slate-500 mt-1">
+          Ticker <span class="text-slate-300">${hyp.ticker_validacion ?? '—'}</span>
+          ${hyp.comparador ?? ''} <span class="text-slate-300">${hyp.valor_umbral ?? '—'}</span>
+          · revision: ${hyp.fecha_limite_revision ?? '—'}
+        </p>
+      </div>
+
+      <div>
+        <p class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Confianza: ${pct(f.nivel_confianza)}</p>
+        <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div class="h-full bg-indigo-500" style="width:${(f.nivel_confianza || 0) * 100}%"></div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-500 italic">${f.limitaciones}</p>
+    </div>
+  `;
+  resultEl.classList.remove('hidden');
+  loadProductSummary();
+}
+
+async function loadProductSummary() {
+  try {
+    const s = await fetch('/api/product-summary').then(r => r.json());
+    const el = document.getElementById('product-summary-inline');
+    if (!s || s.total_evaluadas === 0) {
+      el.textContent = 'aun sin hipotesis evaluadas';
+    } else {
+      el.textContent = `${s.aciertos} cumplidas / ${s.fallos} fallidas (${Math.round((s.tasa_acierto ?? 0) * 100)}% acierto)`;
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+document.getElementById('product-submit').addEventListener('click', submitProduct);
+document.getElementById('product-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitProduct();
+});
+
+refresh();
+loadProductSummary();
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>
